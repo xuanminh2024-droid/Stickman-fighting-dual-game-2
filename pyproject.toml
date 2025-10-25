@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "street-duel"
+version = "0.1.0"
+description = "A simple 2D fighting game using Pygame."
+authors = ["Your Name <youremail@example.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+pygame = "^2.0.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
