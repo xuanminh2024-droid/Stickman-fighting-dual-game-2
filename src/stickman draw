@@ -1,0 +1,224 @@
+import math
+import pygame
+
+def draw_stickman(
+    surf: "pygame.Surface",
+    midbottom: tuple[int, int],
+    scale: float = 1.0,
+    body_color: tuple[int, int, int] = (50, 160, 255),
+    accent_color: tuple[int, int, int] = (255, 200, 80),
+    outline_color: tuple[int, int, int] = (20, 20, 20),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ... then draw weapon at hand_pos#                          facing_right=player.facing_right, attack_progress=attack_progress)#                          body_color=(60,160,255), accent_color=(255,220,120),# hand_pos = draw_stickman(screen, (player.rect.centerx, player.rect.bottom), scale=1.0,# Example usage (in your game draw loop):    return (hand_x, hand_y)    # return hand position for weapon drawing    surf.blit(shadow, (x - shadow_w // 2, bottom - int(2 * scale)))    shadow.fill((0, 0, 0, 90))    shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)    shadow_h = max(2, int(4 * scale))    shadow_w = int(28 * scale)    # subtle shadow under feet    pygame.draw.circle(surf, accent_color, (x + int(6 * scale), neck_y + int(8 * scale)), max(2, int(3 * scale)))    pygame.draw.circle(surf, accent_color, (x - int(6 * scale), neck_y + int(8 * scale)), max(2, int(3 * scale)))    # small decorative chest/pauldrons    pygame.draw.line(surf, body_color, (x, torso_bottom), (right_foot[0], right_foot[1]), stroke)    pygame.draw.line(surf, outline_color, (x, torso_bottom), (right_foot[0], right_foot[1]), stroke + 1)    pygame.draw.line(surf, body_color, (x, torso_bottom), (left_foot[0], left_foot[1]), stroke)    pygame.draw.line(surf, outline_color, (x, torso_bottom), (left_foot[0], left_foot[1]), stroke + 1)    knee_y = hip_y + int(leg_len * 0.35)    right_foot = (x + int(10 * scale), bottom)    left_foot = (x - int(10 * scale), bottom)    # legs with slight bend    pygame.draw.circle(surf, accent_color, opp_hand, max(2, int(3 * scale)))    pygame.draw.circle(surf, accent_color, (hand_x, hand_y), max(2, int(3 * scale)))    # draw hands as colored circles    pygame.draw.line(surf, body_color, shoulder, (hand_x, hand_y), stroke)    pygame.draw.line(surf, outline_color, shoulder, (hand_x, hand_y), stroke + 1)    # draw main (swing) arm    pygame.draw.line(surf, body_color, shoulder, opp_hand, stroke)    pygame.draw.line(surf, outline_color, shoulder, opp_hand, stroke + 1)    opp_hand = (shoulder[0] + opp_dx, shoulder[1] + int(12 * scale))    opp_dx = int((arm_len * 0.6) * -dir_sign)    # draw opposite arm (idle/guard)    hand_y = shoulder[1] + int((8 - 12 * swing) * scale)    hand_x = shoulder[0] + dir_sign * arm_swing_offset    arm_swing_offset = int(arm_len * (0.6 + 0.4 * swing))  # extend on attack    # attacking main arm target    dir_sign = 1 if facing_right else -1    shoulder = (x, neck_y + int(2 * scale))    # shoulder origin    run_offset = int(6 * scale) if attack_progress == 0 and facing_right else 0        swing = math.sin(t * math.pi) * 1.0        # value in -1..1        t = attack_progress        # ease-in-out swing: starts fast, slows at peak    if 0.0 < attack_progress <= 1.0:    swing = 0    # compute arm swing (smooth arc)    pygame.draw.line(surf, body_color, (x, neck_y), (x, torso_bottom), stroke)    pygame.draw.line(surf, outline_color, (x, neck_y), (x, torso_bottom), stroke + 2)    torso_bottom = hip_y    # torso    pygame.draw.circle(surf, eye_col, (head_center[0] + eye_off_x, eye_y), max(1, head_r // 6))    pygame.draw.circle(surf, eye_col, (head_center[0] - eye_off_x, eye_y), max(1, head_r // 6))    eye_col = outline_color    eye_y = head_center[1] - int(head_r * 0.15)    eye_off_x = int(head_r * 0.4)    # simple eyes    pygame.draw.circle(surf, body_color, head_center, head_r)    pygame.draw.circle(surf, outline_color, head_center, head_r + 2)    # draw head (with slight outline)    head_center = (x, neck_y - head_r)    neck_y = hip_y - torso_len    hip_y = bottom - int(6 * scale)    # positions    stroke = max(2, int(3 * scale))    leg_len = int(30 * scale)    arm_len = int(28 * scale)    torso_len = int(30 * scale)    head_r = max(4, int(10 * scale))    # relative sizes    x, bottom = midbottom    """    - attack_progress: 0.0..1.0 controls punch swing animation    - facing_right: direction boolean    - outline_color: outline / stroke color    - accent_color: secondary (face/trim)    - body_color: main color    - scale: size multiplier    - midbottom: (x, y) coordinate for character feet center    - surf: target pygame Surface    Parameters:    Returns the hand position (x, y) where a weapon can be drawn.    Draw a colorful, nicely-proportioned stickman at `midbottom`.    """) -> tuple[int, int]:    attack_progress: float = 0.0    facing_right: bool = True,    facing_right: bool = True,
+    attack_progress: float = 0.0
+) -> tuple[int, int]:
+    """
+    Draw a colorful, nicely-proportioned stickman at `midbottom`.
+    Returns the hand position (x, y) where a weapon can be drawn.
+
+    Parameters:
+    - surf: target pygame Surface
+    - midbottom: (x, y) coordinate for character feet center
+    - scale: size multiplier
+    - body_color: main color
+    - accent_color: secondary (face/trim)
+    - outline_color: outline / stroke color
+    - facing_right: direction boolean
+    - attack_progress: 0.0..1.0 controls punch swing animation
+    """
+
+    x, bottom = midbottom
+    # relative sizes
+    head_r = max(4, int(10 * scale))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ... then draw weapon at hand_pos#                          facing_right=player.facing_right, attack_progress=attack_progress)#                          body_color=(60,160,255), accent_color=(255,220,120),# hand_pos = draw_stickman(screen, (player.rect.centerx, player.rect.bottom), scale=1.0,# Example usage (in your game draw loop):    return (hand_x, hand_y)    # return hand position for weapon drawing    surf.blit(shadow, (x - shadow_w // 2, bottom - int(2 * scale)))    shadow.fill((0, 0, 0, 90))    shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)    shadow_h = max(2, int(4 * scale))    shadow_w = int(28 * scale)    # subtle shadow under feet    pygame.draw.circle(surf, accent_color, (x + int(6 * scale), neck_y + int(8 * scale)), max(2, int(3 * scale)))    pygame.draw.circle(surf, accent_color, (x - int(6 * scale), neck_y + int(8 * scale)), max(2, int(3 * scale)))    # small decorative chest/pauldrons    pygame.draw.line(surf, body_color, (x, torso_bottom), (right_foot[0], right_foot[1]), stroke)    pygame.draw.line(surf, outline_color, (x, torso_bottom), (right_foot[0], right_foot[1]), stroke + 1)    pygame.draw.line(surf, body_color, (x, torso_bottom), (left_foot[0], left_foot[1]), stroke)    pygame.draw.line(surf, outline_color, (x, torso_bottom), (left_foot[0], left_foot[1]), stroke + 1)    knee_y = hip_y + int(leg_len * 0.35)    right_foot = (x + int(10 * scale), bottom)    left_foot = (x - int(10 * scale), bottom)    # legs with slight bend    pygame.draw.circle(surf, accent_color, opp_hand, max(2, int(3 * scale)))    pygame.draw.circle(surf, accent_color, (hand_x, hand_y), max(2, int(3 * scale)))    # draw hands as colored circles    pygame.draw.line(surf, body_color, shoulder, (hand_x, hand_y), stroke)    pygame.draw.line(surf, outline_color, shoulder, (hand_x, hand_y), stroke + 1)    # draw main (swing) arm    pygame.draw.line(surf, body_color, shoulder, opp_hand, stroke)    pygame.draw.line(surf, outline_color, shoulder, opp_hand, stroke + 1)    opp_hand = (shoulder[0] + opp_dx, shoulder[1] + int(12 * scale))    opp_dx = int((arm_len * 0.6) * -dir_sign)    # draw opposite arm (idle/guard)    hand_y = shoulder[1] + int((8 - 12 * swing) * scale)    hand_x = shoulder[0] + dir_sign * arm_swing_offset    arm_swing_offset = int(arm_len * (0.6 + 0.4 * swing))  # extend on attack    # attacking main arm target
+    dir_sign = 1 if facing_right else -1
+    shoulder = (x, neck_y + int(2 * scale))
+    # shoulder origin
+
+    run_offset = int(6 * scale) if attack_progress == 0 and facing_right else 0
+        swing = math.sin(t * math.pi) * 1.0
+        # value in -1..1
+        t = attack_progress
+        # ease-in-out swing: starts fast, slows at peak
+    if 0.0 < attack_progress <= 1.0:
+    swing = 0
+    # compute arm swing (smooth arc)
+
+    pygame.draw.line(surf, body_color, (x, neck_y), (x, torso_bottom), stroke)
+    pygame.draw.line(surf, outline_color, (x, neck_y), (x, torso_bottom), stroke + 2)
+    torso_bottom = hip_y
+    # torso
+
+    pygame.draw.circle(surf, eye_col, (head_center[0] + eye_off_x, eye_y), max(1, head_r // 6))
+    pygame.draw.circle(surf, eye_col, (head_center[0] - eye_off_x, eye_y), max(1, head_r // 6))
+    eye_col = outline_color
+    eye_y = head_center[1] - int(head_r * 0.15)
+    eye_off_x = int(head_r * 0.4)
+    # simple eyes
+    pygame.draw.circle(surf, body_color, head_center, head_r)
+    pygame.draw.circle(surf, outline_color, head_center, head_r + 2)
+    # draw head (with slight outline)
+
+    head_center = (x, neck_y - head_r)
+    neck_y = hip_y - torso_len
+    hip_y = bottom - int(6 * scale)
+    # positions
+
+    stroke = max(2, int(3 * scale))
+    leg_len = int(30 * scale)
+    arm_len = int(28 * scale)    torso_len = int(30 * scale)ws

@@ -2,6 +2,7 @@ import pygame
 import random
 import time
 import sys
+import math
 
 # safe import of project settings (use defaults if a name is missing)
 try:
@@ -28,10 +29,11 @@ KICK_COOLDOWN = cfg_get("KICK_COOLDOWN", 350)
 KICK_DURATION = cfg_get("KICK_DURATION", 220)
 
 SKILL_COOLDOWN = cfg_get("SKILL_COOLDOWN", 5000)
-LASER_DAMAGE = cfg_get("LASER_DAMAGE", 100)
+# set laser damage to 10 as requested
+LASER_DAMAGE = cfg_get("LASER_DAMAGE", 10)
 LASER_SPEED = cfg_get("LASER_SPEED", 12)
-LASER_COLOR = cfg_get("LASER_COLOR", (255, 0, 200))
-LASER_SIZE = cfg_get("LASER_SIZE", (6, 4))
+LASER_COLOR = cfg_get("LASER_COLOR", (255, 60, 200))
+LASER_SIZE = cfg_get("LASER_SIZE", (20, 6))
 
 MEDKIT_SIZE = cfg_get("MEDKIT_SIZE", (24, 14))
 MEDKIT_COLOR = cfg_get("MEDKIT_COLOR", (180, 255, 180))
@@ -66,10 +68,10 @@ class Gun(Weapon):
         if now - getattr(shooter, "last_weapon_time", 0) < self.cooldown:
             return False
         dir = 1 if getattr(shooter, "facing_right", True) else -1
-        # fire two quick lasers with slight vertical offset
+        # fire two quick lasers with slight vertical offset; use LASER_DAMAGE (10)
         for i in (-6, 6):
             pos = (shooter.rect.centerx + (shooter.width//2 + 6) * dir, shooter.rect.centery + i)
-            l = Laser(pos, dir)
+            l = Laser(pos, dir, damage=LASER_DAMAGE)
             game.projectiles.add(l)
             game.all_sprites.add(l)
         shooter.last_weapon_time = now
@@ -110,8 +112,28 @@ class MidnightBlade(Weapon):
 class Laser(pygame.sprite.Sprite):
     def __init__(self, pos, direction, damage=LASER_DAMAGE):
         super().__init__()
-        self.image = pygame.Surface(LASER_SIZE)
-        self.image.fill(LASER_COLOR)
+        w, h = LASER_SIZE
+        w = max(w, 18)
+        h = max(h, 4)
+        # create a glow / beam image
+        surf = pygame.Surface((w*3, h*6), pygame.SRCALPHA)
+        center = surf.get_width() // 2, surf.get_height() // 2
+        base_color = LASER_COLOR
+        # layered glow
+        for i, alpha in enumerate((40, 90, 160, 230), start=4):
+            radius_x = int((w/2 + i*3))
+            radius_y = int((h/2 + i*1.6))
+            col = (*base_color[:3], max(6, alpha//(i)))
+            pygame.draw.ellipse(surf, col, (center[0]-radius_x, center[1]-radius-y, radius_x*2, radius_y*2))
+        # bright core
+        core_rect = pygame.Rect(0,0,w, h)
+        core_rect.center = center
+        pygame.draw.rect(surf, base_color, core_rect)
+        # thin white edge
+        pygame.draw.rect(surf, (255,255,255), core_rect.inflate(-2,-1), 1)
+
+        self.image = surf
+        # place rect so center aligns with pos
         self.rect = self.image.get_rect(center=pos)
         self.vx = LASER_SPEED * direction
         self.life = 1200  # ms
@@ -264,6 +286,90 @@ class Player(pygame.sprite.Sprite):
         name = self.equipped_weapon.name
         x, y = hand_pos
         color = (200, 200, 200)
+
+        def _draw_midnight_blade(surf, hx, hy, facing_right=True, size=1.0, animated=True):
+            flip = 1 if facing_right else -1
+            s = float(size)
+            blade_len = int(78 * s)
+            blade_w = max(6, int(12 * s))
+            base_x = hx
+            tip_x = hx + flip * blade_len
+
+            # build tapered blade polygon (upper edge then lower)
+            segments = 8
+            upper = []
+            lower = []
+            for i in range(segments + 1):
+                t = i / segments
+                bx = int(hx + flip * (t * blade_len))
+                # gentle taper and slight concave profile
+                taper = int((1 - t) * (blade_w // 2))
+                curve = int(math.sin(t * math.pi) * 2 * s)
+                uy = int(hy - taper - curve - t * int(6 * s))
+                ly = int(hy + taper + curve + t * int(6 * s))
+                upper.append((bx, uy))
+                lower.append((bx, ly))
+            blade_poly = upper + lower[::-1]
+
+            # core
+            pygame.draw.polygon(surf, (60, 60, 70), blade_poly)
+            # bevel highlight along upper edge
+            if len(upper) >= 2:
+                pygame.draw.lines(surf, (200, 200, 220), False, upper, max(1, int(2 * s)))
+            # thin dark edge near lower side
+            if len(lower) >= 2:
+                pygame.draw.lines(surf, (30,30,36), False, lower, max(1, int(1 * s)))
+
+            # fuller (central groove)
+            fpts = []
+            for i in range(4):
+                tt = i / 3
+                fx = int(hx + flip * (tt * (blade_len - 12 * s)))
+                fy = int(hy + math.sin(tt * math.pi) * int(2 * s))
+                fpts.append((fx, fy))
+            pygame.draw.lines(surf, (30,30,40), False, fpts, max(1, int(2 * s)))
+            pygame.draw.lines(surf, (120,120,140), False, fpts, max(1, int(1 * s)))
+
+            # ornate guard (tsuba)
+            guard_w = int(14 * s)
+            guard_h = int(6 * s)
+            pygame.draw.ellipse(surf, (80,60,55), (hx - guard_w//2, hy - guard_h//2, guard_w, guard_h))
+            pygame.draw.ellipse(surf, (140,110,90), (hx - guard_w//4, hy - guard_h//4, guard_w//2, guard_h//2))
+
+            # handle
+            handle_len = int(20 * s)
+            handle_w = int(8 * s)
+            handle_rect = pygame.Rect(0,0, handle_w, handle_len)
+            handle_rect.center = (int(hx - flip * (handle_w//2 + 2)), int(hy + handle_len/2))
+            pygame.draw.rect(surf, (30,30,36), handle_rect)
+            pygame.draw.rect(surf, (90,60,40), handle_rect, max(1, int(1*s)))
+            # wrap texture
+            step = int(5 * s)
+            for off in range(-step*2, handle_len + step*2, step):
+                sx = handle_rect.left + (off if facing_right else (handle_rect.width - off))
+                pygame.draw.line(surf, (20,20,24), (sx, handle_rect.top + off), (sx + flip * step, handle_rect.bottom + off), max(1, int(1*s)))
+
+            # pommel
+            pom_x = int(handle_rect.centerx - flip * (handle_w//2 + 2))
+            pom_y = int(handle_rect.bottom + int(3 * s))
+            pygame.draw.circle(surf, (120,100,80), (pom_x, pom_y), max(3, int(3 * s)))
+            pygame.draw.circle(surf, (200,180,150), (pom_x, pom_y), max(1, int(1 * s)))
+
+            # subtle purple veins and tip glow
+            vein_col = (160, 60, 180)
+            vx1 = int(hx + flip * int(14 * s))
+            vx2 = int(tip_x - flip * int(18 * s))
+            pygame.draw.aaline(surf, vein_col, (vx1, hy - int(2*s)), (vx2, hy + int(2*s)))
+            if animated:
+                pulse = 0.5 + 0.5 * abs(math.sin(pygame.time.get_ticks() * 0.006))
+            else:
+                pulse = 0.6
+            glow_r = int(6 * s * pulse)
+            glow = pygame.Surface((glow_r*4, glow_r*2), pygame.SRCALPHA)
+            pygame.draw.ellipse(glow, (180,70,200,int(100 * pulse)), (0,0, glow.get_width(), glow.get_height()))
+            surf.blit(glow, (tip_x - glow.get_width()//2 + (-4 if facing_right else 4), hy - glow.get_height()//2), special_flags=pygame.BLEND_RGBA_ADD)
+
+        # existing weapon drawings
         if name == "Gun":
             # barrel and grip
             barrel = pygame.Rect(0, 0, 34, 8)
@@ -285,9 +391,7 @@ class Player(pygame.sprite.Sprite):
             pygame.draw.line(surf, (120,120,120), (x, y), (bx, y+6), 3)
             pygame.draw.circle(surf, (40,40,40), (int(bx), int(y+8)), 10)
         elif name == "Midnight Blade":
-            bx = x + (34 if self.facing_right else -34)
-            pygame.draw.line(surf, (30,30,30), (x, y), (bx, y-4), 6)
-            pygame.draw.line(surf, (120,0,200), (x, y-2), (bx, y-6), 3)
+            _draw_midnight_blade(surf, x + (8 if self.facing_right else -8), y, self.facing_right, size=1.0, animated=True)
 
     def draw(self, surf):
         # draw improved stickman with swinging arm animation
@@ -335,6 +439,63 @@ class Player(pygame.sprite.Sprite):
         # draw weapon in hand if any
         self.draw_weapon(surf, (hand_x, hand_y))
 
+        # enhanced "midnight" slash visual: wedge + sparks following attack_progress
+        if self.attack_type == "midnight" and atk_prog > 0:
+            # create temporary surface for translucent additive blending
+            tmp = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+            dir_sign = 1 if self.facing_right else -1
+
+            # sweep angles around forward direction
+            angle_center = 0.0 if self.facing_right else math.pi
+            sweep_half = math.radians(60)
+            start_angle = angle_center - sweep_half - math.radians(10)
+            end_angle = angle_center + sweep_half + math.radians(10)
+            current_angle = start_angle + (end_angle - start_angle) * atk_prog
+
+            # radius scales with weapon and player size
+            base_radius = int(70 * self.attack_width_multiplier)
+            radius = int(base_radius * (0.6 + 0.6 * atk_prog))  # grows a bit through the attack
+            inner_radius = max(8, int(radius * 0.35))
+
+            # sample points along arc up to current_angle
+            steps = 14
+            outer_pts = []
+            inner_pts = []
+            for i in range(steps + 1):
+                t = i / steps
+                ang = start_angle + (current_angle - start_angle) * t
+                px = int(shoulder[0] + math.cos(ang) * radius)
+                py = int(shoulder[1] + math.sin(ang) * radius)
+                outer_pts.append((px, py))
+                ix = int(shoulder[0] + math.cos(ang) * inner_radius)
+                iy = int(shoulder[1] + math.sin(ang) * inner_radius)
+                inner_pts.append((ix, iy))
+
+            # form polygon wedge (shoulder -> outer arc -> reversed inner arc)
+            poly = [shoulder] + outer_pts + inner_pts[::-1]
+            # layered fill for glow and core
+            pygame.draw.polygon(tmp, (160, 60, 200, int(80 * (1 - atk_prog*0.2))), poly)
+            pygame.draw.polygon(tmp, (220, 140, 255, int(120 * atk_prog)), poly)
+
+            # add streak highlights along outer arc
+            for i, p in enumerate(outer_pts[::max(1, len(outer_pts)//6)]):
+                alpha = int(200 * (1 - i / len(outer_pts)))
+                pygame.draw.circle(tmp, (255, 220, 255, alpha), p, max(3, int(4 * (1 - i / len(outer_pts)))))
+
+            # sparks moving along the arc (small particles)
+            sparks = 6
+            for sidx in range(sparks):
+                t = (sidx / sparks + atk_prog * 0.8) % 1.0
+                ang = start_angle + (current_angle - start_angle) * t
+                sx = int(shoulder[0] + math.cos(ang) * (radius * (0.9 - 0.3 * t)))
+                sy = int(shoulder[1] + math.sin(ang) * (radius * (0.9 - 0.3 * t)))
+                rad = max(1, int(2 + 2 * (1 - t)))
+                col = (255, int(220 * (1 - t)), int(180 * (1 - t)), 220)
+                pygame.draw.circle(tmp, col, (sx, sy), rad)
+
+            # blit tmp onto screen with additive blend for glow effect
+            surf.blit(tmp, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+
         # legs
         pygame.draw.line(surf, body_color, (x, hip_y + recoil), (x - 10, bottom), 4)
         pygame.draw.line(surf, body_color, (x, hip_y + recoil), (x + 10, bottom), 4)
@@ -357,11 +518,10 @@ class Enemy(pygame.sprite.Sprite):
         self.last_action_time = pygame.time.get_ticks()
         self.next_action_delay = random.randint(600, 1400)
         self.attack_end_timer = None
-        # enemy may equip a weapon (includes Gun so it can shoot)
-        self.equipped_weapon = random.choice([None, Gun(), Katana(), Flail(), None])
-        self.last_weapon_time = 0
+        # enemy may randomly equip a weapon visually (not functional)
+        self.equipped_weapon = random.choice([None, Katana(), Flail(), None, None])
 
-    def update(self, dt, player_rect=None, game=None):
+    def update(self, dt, player_rect=None):
         now = pygame.time.get_ticks()
         if player_rect:
             if abs(self.rect.centerx - player_rect.centerx) > 60:
@@ -390,13 +550,6 @@ class Enemy(pygame.sprite.Sprite):
         if self.attack_end_timer and now > self.attack_end_timer:
             self.finish_attack()
             self.attack_end_timer = None
-
-        # If enemy has a ranged weapon, occasionally shoot at the player
-        if self.equipped_weapon and getattr(self.equipped_weapon, "ranged", False) and game and player_rect:
-            dist = abs(self.rect.centerx - player_rect.centerx)
-            # preference to shoot when within range; small random chance each update
-            if dist < 450 and random.random() < 0.02:
-                self.equipped_weapon.on_use(self, game)
 
     def finish_attack(self):
         self.attacking = False
@@ -487,6 +640,10 @@ class Game:
         self.coins = 0
         self.state = "running"  # only running or gameover
 
+        # animated fire background params
+        self.fire_height = 160
+        self._fire_seed = random.randint(0, 9999)
+
     def spawn_medkit(self):
         x = random.randint(40, self.screen_rect.width - 40)
         med = MedKit(x)
@@ -541,7 +698,7 @@ class Game:
             return
 
         self.player.update(dt, game=self)
-        self.enemy.update(dt, player_rect=self.player.rect, game=self)
+        self.enemy.update(dt, player_rect=self.player.rect)
         self.items.update(dt)
         self.projectiles.update(dt)
 
@@ -595,12 +752,104 @@ class Game:
             ground_y = self.screen_rect.height - GROUND_Y_OFFSET
             self.enemy.rect.midbottom = (self.screen_rect.width - 100, ground_y)
 
+    def _draw_fire_background(self):
+        """Draw a war-themed animated background: smoky sky, distant explosions, ruins silhouette and embers."""
+        w = self.screen_rect.width
+        h = self.screen_rect.height
+        t = pygame.time.get_ticks() * 0.0015
+        base_y = h
+
+        # 1) dark gradient sky (reddish/orange near horizon -> dark smoky above)
+        sky = pygame.Surface((w, h), pygame.SRCALPHA)
+        for y in range(h):
+            # blend from deep orange near horizon to near-black
+            p = y / h
+            r = int(20 + (220 - 20) * (1 - p) * 0.8)
+            g = int(12 + (80 - 12) * (1 - p) * 0.6)
+            b = int(18 + (40 - 18) * (1 - p) * 0.3)
+            a = int(200 * (1 - p))
+            sky.fill((r, g, b, a), rect=pygame.Rect(0, y, w, 1))
+        self.screen.blit(sky, (0, 0))
+
+        # 2) distant explosions / glows (pulsing orange spots)
+        for i, posx in enumerate(range(80, w, 220)):
+            phase = (t * (0.6 + (i % 3) * 0.15) + (i * 0.7) + (self._fire_seed % 37)) % (2 * math.pi)
+            intensity = 0.5 + 0.5 * math.sin(phase)
+            glow_r = int(60 + 40 * intensity)
+            glow_surf = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
+            gx = posx + (math.sin(t * 0.8 + i) * 60)
+            gy = int(h * 0.72 - abs(math.cos(t * 0.6 + i)) * 30)
+            color = (255, int(120 + 80 * intensity), 30, int(80 + 140 * intensity))
+            pygame.draw.ellipse(glow_surf, color, (0, 0, glow_r * 2, glow_r * 2))
+            self.screen.blit(glow_surf, (gx - glow_r, gy - glow_r), special_flags=0)
+
+        # 3) ruined city silhouette (solid dark shapes with slight flicker)
+        silhouette = pygame.Surface((w, int(h * 0.45)), pygame.SRCALPHA)
+        sil_h = silhouette.get_height()
+        # build skyline with rectangles of varying height
+        x = 0
+        rng = int(self._fire_seed % 97)
+        while x < w:
+            bw = 30 + ((x + rng) % 90)
+            bh = int(sil_h * (0.35 + ((x * 13 + rng) % 60) / 100))
+            color_dark = (18, 18, 20, 255)
+            rect = pygame.Rect(x, sil_h - bh, bw, bh)
+            pygame.draw.rect(silhouette, color_dark, rect)
+            # occasional broken tower tops
+            if ((x + rng) % 130) < 20:
+                pygame.draw.rect(silhouette, (34, 20, 20, 255), (x + bw//4, sil_h - bh - 6, bw//2, 6))
+            x += bw + 6
+        # slight horizontal jitter to simulate heat/smoke distortion
+        jitter_x = int(math.sin(t * 0.9 + self._fire_seed) * 2)
+        self.screen.blit(silhouette, (jitter_x, int(h * 0.45)), special_flags=0)
+
+        # 4) layered smoke plumes (soft semi-transparent clouds rising)
+        smoke_layers = 3
+        for layer in range(smoke_layers):
+            layer_surf = pygame.Surface((w, int(h * 0.35)), pygame.SRCALPHA)
+            base_y_off = int(h * 0.35 * layer * 0.25)
+            for i in range(12):
+                px = int(((i * 97 + self._fire_seed * 3) % (w + 200)) - 100 + math.sin(t * (0.3 + layer * 0.15) + i) * 80)
+                py = int(base_y_off + (i % 5) * 18 + math.cos(t * 0.4 + i * 0.6 + layer) * 12)
+                rad = int(40 + 30 * layer + (i % 4) * 6)
+                col = (40, 40, 48, max(12, 60 - layer * 8))
+                pygame.draw.ellipse(layer_surf, col, (px % w, py, rad, int(rad * 0.7)))
+            # blur effect by drawing offset copies
+            for ox, oy, a in ((0, 0, 140), (6, -4, 40), (-6, 3, 30)):
+                tmp = layer_surf.copy()
+                tmp.fill((255, 255, 255, a), special_flags=pygame.BLEND_RGBA_MULT)
+                self.screen.blit(tmp, (ox, int(h * 0.36) - base_y_off//2 + oy), special_flags=0)
+
+        # 5) embers rising (small bright particles)
+        ember_count = 42
+        for i in range(ember_count):
+            phase = (i * 0.37 + t * (0.8 + (i % 5) * 0.05) + (self._fire_seed % 13)) 
+            ex = int((w * ((i * 23 + 17) % 97)) / 100 + math.sin(phase) * 90) % w
+            ey = int(h * 0.8 - ( (math.fmod(phase * 10, 300)) ) * 0.6)
+            size = max(1, int(2 + (math.sin(phase * 3 + i) + 1) * 2))
+            ember_col = (255, 200 - (i % 6) * 20, 60, 220)
+            pygame.draw.circle(self.screen, ember_col, (ex, ey), size)
+
+        # 6) ground glow / scorched earth strip
+        glow_h = int(h * 0.12)
+        ground_glow = pygame.Surface((w, glow_h), pygame.SRCALPHA)
+        for y in range(glow_h):
+            a = int(190 * (1 - (y / glow_h)) )
+            ground_glow.fill((100 + int(120 * (1 - y/glow_h)), 40, 15, a), rect=pygame.Rect(0, y, w, 1))
+        self.screen.blit(ground_glow, (0, h - glow_h))
+
     def draw(self):
-        self.screen.fill(self.bg_color)
+        # draw animated fire background first
+        try:
+            self._draw_fire_background()
+        except Exception:
+            # fallback to plain fill if anything fails
+            self.screen.fill(self.bg_color)
+        # draw ground line and rest
         ground_y = self.screen_rect.height - GROUND_Y_OFFSET
         pygame.draw.line(self.screen, (80, 80, 80), (0, ground_y), (self.screen_rect.width, ground_y), 4)
 
-        # draw pickups & projectiles
+        # draw pickups & projectiles (projectiles contain laser sprite with glow)
         self.all_sprites.draw(self.screen)
 
         # draw enemy and player procedurally

@@ -1,6 +1,9 @@
 import pygame
 from game import Game
-from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS  # ensure settings.py exists
+try:
+    from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
+except Exception:
+    SCREEN_WIDTH, SCREEN_HEIGHT, FPS = 800, 600, 60
 
 def main():
     pygame.init()
@@ -17,7 +20,6 @@ def main():
             if ev.type == pygame.QUIT:
                 running = False
 
-        # pass dt and events to game (adjust if your Game.update signature differs)
         game.update(dt, events)
         game.draw()
         pygame.display.flip()
