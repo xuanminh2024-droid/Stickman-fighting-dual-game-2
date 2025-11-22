@@ -1,9 +1,17 @@
+import sys
 import pygame
-from game import Game
+
+# try to read optional settings; fall back to defaults
 try:
-    from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
+    import settings
+    SCREEN_WIDTH = getattr(settings, "SCREEN_WIDTH", 900)
+    SCREEN_HEIGHT = getattr(settings, "SCREEN_HEIGHT", 520)
+    FPS = getattr(settings, "FPS", 60)
 except Exception:
-    SCREEN_WIDTH, SCREEN_HEIGHT, FPS = 800, 600, 60
+    SCREEN_WIDTH, SCREEN_HEIGHT, FPS = 900, 520, 60
+
+# import the Game class from game.py
+from game import Game
 
 def main():
     pygame.init()
@@ -13,11 +21,13 @@ def main():
     game = Game(screen)
 
     running = True
-    while running:
-        dt = clock.tick(FPS)  # ms since last frame
+    while running: 
+        dt = clock.tick(FPS)
         events = pygame.event.get()
         for ev in events:
             if ev.type == pygame.QUIT:
+                running = False
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 running = False
 
         game.update(dt, events)
@@ -25,6 +35,7 @@ def main():
         pygame.display.flip()
 
     pygame.quit()
+    sys.exit()
 
 if __name__ == "__main__":
     main()

@@ -3,15 +3,21 @@ import random
 import time
 import sys
 import math
-
+from entities.player import Player 
+from entities.flail import Flail
+from entities.katana import Katana
+from entities.midnightblade import MidnightBlade
+from entities.weapon import Weapon
 # safe import of project settings (use defaults if a name is missing)
 try:
-    import settings as cfg
+    import settings
 except Exception:
-    cfg = None
+    settings = None
 
 def cfg_get(name, default):
-    return getattr(cfg, name) if cfg and hasattr(cfg, name) else default
+    if settings is None:
+        return default
+    return getattr(settings, name, default)
 
 # visual / gameplay constants (use settings values when available)
 SCREEN_BG = cfg_get("SCREEN_BG", (30, 30, 30))
@@ -43,18 +49,6 @@ MEDKIT_HEAL = cfg_get("MEDKIT_HEAL", 80)
 HEALTH_BG = cfg_get("HEALTH_BG", (60, 60, 60))
 HEALTH_FG = cfg_get("HEALTH_FG", (80, 220, 100))
 
-# --- Weapon system (kept inside this file per request - simple API) ---
-class Weapon:
-    name = "Fist"
-    price = 0
-    melee_bonus = 0
-    cooldown = 300
-    ranged = False
-    def on_use(self, player, game):
-        """Ranged use or special action. Return True if consumed/triggered."""
-        return False
-    def melee_damage(self, base):
-        return base + self.melee_bonus
 
 class Gun(Weapon):
     name = "Gun"
@@ -77,36 +71,6 @@ class Gun(Weapon):
         shooter.last_weapon_time = now
         return True
 
-class Katana(Weapon):
-    name = "Katana"
-    price = 120
-    melee_bonus = 18
-    cooldown = 200
-    ranged = False
-
-class Flail(Weapon):
-    name = "Flail"
-    price = 140
-    melee_bonus = 10
-    cooldown = 400
-    ranged = False
-
-class MidnightBlade(Weapon):
-    name = "Midnight Blade"
-    price = 300
-    melee_bonus = 45
-    cooldown = 250
-    ranged = False
-    def on_use(self, player, game):
-        now = pygame.time.get_ticks()
-        if now - getattr(player, "last_weapon_time", 0) < self.cooldown:
-            return False
-        player.attacking = True
-        player.attack_type = "midnight"
-        player.attack_duration = 320
-        player.attack_start = now
-        player.last_weapon_time = now
-        return True
 
 # --- Projectile / Entities ---
 class Laser(pygame.sprite.Sprite):
@@ -117,14 +81,14 @@ class Laser(pygame.sprite.Sprite):
         h = max(h, 4)
         # create a glow / beam image
         surf = pygame.Surface((w*3, h*6), pygame.SRCALPHA)
-        center = surf.get_width() // 2, surf.get_height() // 2
+        center = (surf.get_width() // 2, surf.get_height() // 2)
         base_color = LASER_COLOR
-        # layered glow
+        # layered glow (fixed center-y typo)
         for i, alpha in enumerate((40, 90, 160, 230), start=4):
             radius_x = int((w/2 + i*3))
             radius_y = int((h/2 + i*1.6))
-            col = (*base_color[:3], max(6, alpha//(i)))
-            pygame.draw.ellipse(surf, col, (center[0]-radius_x, center[1]-radius-y, radius_x*2, radius_y*2))
+            col = (*base_color[:3], max(6, alpha//i))
+            pygame.draw.ellipse(surf, col, (center[0]-radius_x, center[1]-radius_y, radius_x*2, radius_y*2))
         # bright core
         core_rect = pygame.Rect(0,0,w, h)
         core_rect.center = center
@@ -148,357 +112,6 @@ class Laser(pygame.sprite.Sprite):
         if self.rect.right < 0 or self.rect.left > sw:
             self.kill()
 
-# --- Player with better stickman animation & weapon support ---
-class Player(pygame.sprite.Sprite):
-    def __init__(self, pos):
-        super().__init__()
-        self.width, self.height = PLAYER_SIZE
-        self.image = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        self.rect = self.image.get_rect(midbottom=pos)
-        self.vx = 0
-        self.vy = 0
-        self.on_ground = True
-        self.facing_right = True
-        self.max_hp = 1000
-        self.hp = self.max_hp
-        self.attacking = False
-        self.attack_type = None
-        self.attack_duration = 0
-        self.attack_start = 0
-        self.last_attack_time = 0
-        self.last_skill_time = -SKILL_COOLDOWN
-        self.has_knife = False
-
-        # weapon system
-        self.equipped_weapon = None
-        self.attack_width_multiplier = 1.0
-        self.anim_state = "idle"
-        self.anim_timer = 0
-        self.last_weapon_time = 0
-
-    def equip(self, weapon):
-        self.equipped_weapon = weapon
-        if isinstance(weapon, Flail):
-            self.attack_width_multiplier = 1.5
-        elif isinstance(weapon, Katana):
-            self.attack_width_multiplier = 1.3
-        elif isinstance(weapon, MidnightBlade):
-            self.attack_width_multiplier = 1.4
-        else:
-            self.attack_width_multiplier = 1.0
-
-    def can_use_skill(self):
-        return pygame.time.get_ticks() - self.last_skill_time >= SKILL_COOLDOWN
-
-    def use_skill(self):
-        self.last_skill_time = pygame.time.get_ticks()
-
-    def start_attack(self, kind):
-        now = pygame.time.get_ticks()
-        if kind == "punch":
-            dur = PUNCH_DURATION
-        elif kind == "kick":
-            dur = KICK_DURATION
-        elif kind == "midnight":
-            dur = getattr(self, "attack_duration", 300)
-        else:
-            dur = PUNCH_DURATION
-        self.attacking = True
-        self.attack_type = kind
-        self.attack_duration = dur
-        self.attack_start = now
-        self.last_attack_time = now
-        self.anim_state = "attack"
-
-    def update(self, dt, game=None):
-        keys = pygame.key.get_pressed()
-        self.vx = 0
-        if keys[pygame.K_a]:
-            self.vx = -4
-            self.facing_right = False
-            if self.on_ground:
-                self.anim_state = "run"
-        elif keys[pygame.K_d]:
-            self.vx = 4
-            self.facing_right = True
-            if self.on_ground:
-                self.anim_state = "run"
-        else:
-            if self.on_ground and not self.attacking:
-                self.anim_state = "idle"
-
-        if keys[pygame.K_w] and self.on_ground:
-            self.vy = -12
-            self.on_ground = False
-            self.anim_state = "jump"
-
-        now = pygame.time.get_ticks()
-
-        # weapon fire / melee mapping: V triggers weapon or punch
-        if keys[pygame.K_v] and now - self.last_attack_time > PUNCH_COOLDOWN:
-            if self.equipped_weapon and getattr(self.equipped_weapon, "ranged", False):
-                used = self.equipped_weapon.on_use(self, game)
-                if used:
-                    self.anim_state = "attack"
-            else:
-                self.start_attack("punch")
-
-        if keys[pygame.K_x] and now - self.last_attack_time > KICK_COOLDOWN:
-            self.start_attack("kick")
-
-        # finish attack by duration
-        if self.attacking and now - self.attack_start > self.attack_duration:
-            self.attacking = False
-            self.attack_type = None
-            if self.anim_state == "attack":
-                self.anim_state = "idle"
-
-        # physics
-        self.rect.x += int(self.vx)
-        self.vy += GRAVITY
-        self.rect.y += int(self.vy)
-        ground_y = pygame.display.get_surface().get_height() - GROUND_Y_OFFSET
-        if self.rect.bottom >= ground_y:
-            self.rect.bottom = ground_y
-            self.vy = 0
-            self.on_ground = True
-
-    def get_attack_rect(self):
-        if not self.attacking:
-            return None
-        w = int((24 if self.attack_type == "punch" else 40) * self.attack_width_multiplier)
-        if self.attack_type == "midnight":
-            w = int(80 * self.attack_width_multiplier)
-            h = 36
-        else:
-            h = 20
-        if self.facing_right:
-            ax = self.rect.right
-        else:
-            ax = self.rect.left - w
-        ay = self.rect.centery - h // 2
-        return pygame.Rect(ax, ay, w, h)
-
-    def draw_weapon(self, surf, hand_pos):
-        # draw weapon shape near hand_pos depending on equipped_weapon
-        if not self.equipped_weapon:
-            return
-        name = self.equipped_weapon.name
-        x, y = hand_pos
-        color = (200, 200, 200)
-
-        def _draw_midnight_blade(surf, hx, hy, facing_right=True, size=1.0, animated=True):
-            flip = 1 if facing_right else -1
-            s = float(size)
-            blade_len = int(78 * s)
-            blade_w = max(6, int(12 * s))
-            base_x = hx
-            tip_x = hx + flip * blade_len
-
-            # build tapered blade polygon (upper edge then lower)
-            segments = 8
-            upper = []
-            lower = []
-            for i in range(segments + 1):
-                t = i / segments
-                bx = int(hx + flip * (t * blade_len))
-                # gentle taper and slight concave profile
-                taper = int((1 - t) * (blade_w // 2))
-                curve = int(math.sin(t * math.pi) * 2 * s)
-                uy = int(hy - taper - curve - t * int(6 * s))
-                ly = int(hy + taper + curve + t * int(6 * s))
-                upper.append((bx, uy))
-                lower.append((bx, ly))
-            blade_poly = upper + lower[::-1]
-
-            # core
-            pygame.draw.polygon(surf, (60, 60, 70), blade_poly)
-            # bevel highlight along upper edge
-            if len(upper) >= 2:
-                pygame.draw.lines(surf, (200, 200, 220), False, upper, max(1, int(2 * s)))
-            # thin dark edge near lower side
-            if len(lower) >= 2:
-                pygame.draw.lines(surf, (30,30,36), False, lower, max(1, int(1 * s)))
-
-            # fuller (central groove)
-            fpts = []
-            for i in range(4):
-                tt = i / 3
-                fx = int(hx + flip * (tt * (blade_len - 12 * s)))
-                fy = int(hy + math.sin(tt * math.pi) * int(2 * s))
-                fpts.append((fx, fy))
-            pygame.draw.lines(surf, (30,30,40), False, fpts, max(1, int(2 * s)))
-            pygame.draw.lines(surf, (120,120,140), False, fpts, max(1, int(1 * s)))
-
-            # ornate guard (tsuba)
-            guard_w = int(14 * s)
-            guard_h = int(6 * s)
-            pygame.draw.ellipse(surf, (80,60,55), (hx - guard_w//2, hy - guard_h//2, guard_w, guard_h))
-            pygame.draw.ellipse(surf, (140,110,90), (hx - guard_w//4, hy - guard_h//4, guard_w//2, guard_h//2))
-
-            # handle
-            handle_len = int(20 * s)
-            handle_w = int(8 * s)
-            handle_rect = pygame.Rect(0,0, handle_w, handle_len)
-            handle_rect.center = (int(hx - flip * (handle_w//2 + 2)), int(hy + handle_len/2))
-            pygame.draw.rect(surf, (30,30,36), handle_rect)
-            pygame.draw.rect(surf, (90,60,40), handle_rect, max(1, int(1*s)))
-            # wrap texture
-            step = int(5 * s)
-            for off in range(-step*2, handle_len + step*2, step):
-                sx = handle_rect.left + (off if facing_right else (handle_rect.width - off))
-                pygame.draw.line(surf, (20,20,24), (sx, handle_rect.top + off), (sx + flip * step, handle_rect.bottom + off), max(1, int(1*s)))
-
-            # pommel
-            pom_x = int(handle_rect.centerx - flip * (handle_w//2 + 2))
-            pom_y = int(handle_rect.bottom + int(3 * s))
-            pygame.draw.circle(surf, (120,100,80), (pom_x, pom_y), max(3, int(3 * s)))
-            pygame.draw.circle(surf, (200,180,150), (pom_x, pom_y), max(1, int(1 * s)))
-
-            # subtle purple veins and tip glow
-            vein_col = (160, 60, 180)
-            vx1 = int(hx + flip * int(14 * s))
-            vx2 = int(tip_x - flip * int(18 * s))
-            pygame.draw.aaline(surf, vein_col, (vx1, hy - int(2*s)), (vx2, hy + int(2*s)))
-            if animated:
-                pulse = 0.5 + 0.5 * abs(math.sin(pygame.time.get_ticks() * 0.006))
-            else:
-                pulse = 0.6
-            glow_r = int(6 * s * pulse)
-            glow = pygame.Surface((glow_r*4, glow_r*2), pygame.SRCALPHA)
-            pygame.draw.ellipse(glow, (180,70,200,int(100 * pulse)), (0,0, glow.get_width(), glow.get_height()))
-            surf.blit(glow, (tip_x - glow.get_width()//2 + (-4 if facing_right else 4), hy - glow.get_height()//2), special_flags=pygame.BLEND_RGBA_ADD)
-
-        # existing weapon drawings
-        if name == "Gun":
-            # barrel and grip
-            barrel = pygame.Rect(0, 0, 34, 8)
-            barrel.center = (x + (18 if self.facing_right else -18), y)
-            grip = pygame.Rect(0, 0, 8, 12)
-            grip.center = (x + (6 if self.facing_right else -6), y + 8)
-            pygame.draw.rect(surf, (30,30,30), barrel)
-            pygame.draw.rect(surf, (60,60,60), grip)
-            pygame.draw.rect(surf, (200,200,40), barrel.inflate(-10,-2), 0)
-        elif name == "Katana":
-            # long thin blade
-            blade_len = 60
-            bx = x + (blade_len//2 if self.facing_right else -blade_len//2)
-            pygame.draw.line(surf, (220,220,255), (x, y), (bx, y-6), 4)
-            pygame.draw.rect(surf, (80,40,20), (x - 6, y - 4, 12, 8))
-        elif name == "Flail":
-            # chain + ball
-            bx = x + (22 if self.facing_right else -22)
-            pygame.draw.line(surf, (120,120,120), (x, y), (bx, y+6), 3)
-            pygame.draw.circle(surf, (40,40,40), (int(bx), int(y+8)), 10)
-        elif name == "Midnight Blade":
-            _draw_midnight_blade(surf, x + (8 if self.facing_right else -8), y, self.facing_right, size=1.0, animated=True)
-
-    def draw(self, surf):
-        # draw improved stickman with swinging arm animation
-        x = self.rect.centerx
-        top = self.rect.top
-        bottom = self.rect.bottom
-        body_color = PLAYER_COLOR
-        head_r = int(self.width * 0.18)
-        head_center = (x, top + head_r + 2)
-        neck_y = head_center[1] + head_r
-        hip_y = bottom - int(self.height * 0.2)
-
-        # calculate attack progress for smooth swing
-        now = pygame.time.get_ticks()
-        atk_prog = 0.0
-        if self.attacking:
-            atk_prog = min(1.0, (now - self.attack_start) / max(1, self.attack_duration))
-
-        if self.attacking:
-            body_color = PLAYER_HIT_COLOR
-
-        # head
-        pygame.draw.circle(surf, body_color, head_center, head_r, 0)
-        # torso (slight recoil on attack)
-        recoil = int(6 * atk_prog) if self.attacking else 0
-        pygame.draw.line(surf, body_color, (x, neck_y), (x, hip_y + recoil), 4)
-
-        # arms: compute hand positions using simple swing math
-        arm_len = 28
-        shoulder = (x, neck_y + 2)
-        # attack swing angle [-45..45] degrees converted to offset
-        swing = int(30 * (1 - (atk_prog * 2 - 1)**2)) if self.attacking else (6 if self.anim_state == "run" else 0)
-        if self.facing_right:
-            hand_x = shoulder[0] + arm_len + int(swing * (1 if self.attacking else 0))
-        else:
-            hand_x = shoulder[0] - arm_len - int(swing * (1 if self.attacking else 0))
-        hand_y = shoulder[1] + (6 if self.attacking else 14)
-        # draw non-attacking opposite arm
-        opp_x = shoulder[0] - (arm_len // 2 if self.facing_right else -arm_len//2)
-        opp_y = shoulder[1] + 16
-        pygame.draw.line(surf, body_color, shoulder, (opp_x, opp_y), 4)
-        # draw main arm (attacking)
-        pygame.draw.line(surf, body_color, shoulder, (hand_x, hand_y), 4)
-
-        # draw weapon in hand if any
-        self.draw_weapon(surf, (hand_x, hand_y))
-
-        # enhanced "midnight" slash visual: wedge + sparks following attack_progress
-        if self.attack_type == "midnight" and atk_prog > 0:
-            # create temporary surface for translucent additive blending
-            tmp = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
-            dir_sign = 1 if self.facing_right else -1
-
-            # sweep angles around forward direction
-            angle_center = 0.0 if self.facing_right else math.pi
-            sweep_half = math.radians(60)
-            start_angle = angle_center - sweep_half - math.radians(10)
-            end_angle = angle_center + sweep_half + math.radians(10)
-            current_angle = start_angle + (end_angle - start_angle) * atk_prog
-
-            # radius scales with weapon and player size
-            base_radius = int(70 * self.attack_width_multiplier)
-            radius = int(base_radius * (0.6 + 0.6 * atk_prog))  # grows a bit through the attack
-            inner_radius = max(8, int(radius * 0.35))
-
-            # sample points along arc up to current_angle
-            steps = 14
-            outer_pts = []
-            inner_pts = []
-            for i in range(steps + 1):
-                t = i / steps
-                ang = start_angle + (current_angle - start_angle) * t
-                px = int(shoulder[0] + math.cos(ang) * radius)
-                py = int(shoulder[1] + math.sin(ang) * radius)
-                outer_pts.append((px, py))
-                ix = int(shoulder[0] + math.cos(ang) * inner_radius)
-                iy = int(shoulder[1] + math.sin(ang) * inner_radius)
-                inner_pts.append((ix, iy))
-
-            # form polygon wedge (shoulder -> outer arc -> reversed inner arc)
-            poly = [shoulder] + outer_pts + inner_pts[::-1]
-            # layered fill for glow and core
-            pygame.draw.polygon(tmp, (160, 60, 200, int(80 * (1 - atk_prog*0.2))), poly)
-            pygame.draw.polygon(tmp, (220, 140, 255, int(120 * atk_prog)), poly)
-
-            # add streak highlights along outer arc
-            for i, p in enumerate(outer_pts[::max(1, len(outer_pts)//6)]):
-                alpha = int(200 * (1 - i / len(outer_pts)))
-                pygame.draw.circle(tmp, (255, 220, 255, alpha), p, max(3, int(4 * (1 - i / len(outer_pts)))))
-
-            # sparks moving along the arc (small particles)
-            sparks = 6
-            for sidx in range(sparks):
-                t = (sidx / sparks + atk_prog * 0.8) % 1.0
-                ang = start_angle + (current_angle - start_angle) * t
-                sx = int(shoulder[0] + math.cos(ang) * (radius * (0.9 - 0.3 * t)))
-                sy = int(shoulder[1] + math.sin(ang) * (radius * (0.9 - 0.3 * t)))
-                rad = max(1, int(2 + 2 * (1 - t)))
-                col = (255, int(220 * (1 - t)), int(180 * (1 - t)), 220)
-                pygame.draw.circle(tmp, col, (sx, sy), rad)
-
-            # blit tmp onto screen with additive blend for glow effect
-            surf.blit(tmp, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
-
-        # legs
-        pygame.draw.line(surf, body_color, (x, hip_y + recoil), (x - 10, bottom), 4)
-        pygame.draw.line(surf, body_color, (x, hip_y + recoil), (x + 10, bottom), 4)
 
 # --- Enemy stickman remains procedural as before ---
 class Enemy(pygame.sprite.Sprite):
